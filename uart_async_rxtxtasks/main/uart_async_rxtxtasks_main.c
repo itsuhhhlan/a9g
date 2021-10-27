@@ -86,10 +86,13 @@ static void internetSetup()
     esp_log_level_set(GPRSGSM_TAG, ESP_LOG_INFO);
     sendData(GPRSGSM_TAG, "AT+CGATT=1\r\n");
     vTaskDelay(2000 / portTICK_PERIOD_MS);
+    
     sendData(GPRSGSM_TAG, "AT+CGDCONT=1,\"IP\",\"hologram\"\r\n");
     vTaskDelay(3000 / portTICK_PERIOD_MS);
-    sendData(GPRSGSM_TAG, "AT+CGACT=1,1,\r\n");
+    
+    sendData(GPRSGSM_TAG, "AT+CGACT=1,1\r\n");
     vTaskDelay(2000 / portTICK_PERIOD_MS);
+    
 
     return;
 }
@@ -104,6 +107,7 @@ static void smsSetup()
     static const char *SMS_TAG = "sms_TASK";
     esp_log_level_set(SMS_TAG, ESP_LOG_INFO);
     sendData(SMS_TAG, "AT+CMGF=1\r\n");
+    
 }
 
 /*
@@ -114,6 +118,7 @@ static void smsDisable()
     static const char *SMSDISABLE_TAG = "Disable_SMS";
     esp_log_level_set(SMSDISABLE_TAG, ESP_LOG_INFO);
     sendData(SMSDISABLE_TAG, "AT+CMGF=0\r\n");
+    
 }
 
 /*
@@ -153,6 +158,7 @@ static void smsDisable()
 static void sendLocation()
 {
     smsSetup();
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
     //getLocation();
     char* googs = "https://www.google.com/maps/search/?api=1&query=  ";
     char* result =  "13241.1,-1252.999 \r\n";
@@ -164,10 +170,13 @@ static void sendLocation()
     static const char *sendLoc_TAG = "Location_SMS";
     esp_log_level_set(sendLoc_TAG, ESP_LOG_INFO);
     sendData(sendLoc_TAG, "AT+CMGS=\"14077564031\"\r\n");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    
     sendData(sendLoc_TAG, hyperlink);
     //sendData(sendLoc_TAG, "TEST\r\n");
-    sendData(sendLoc_TAG, sizeof(hex_byte_for_register)); //ctrl+z equivalent
+    sendData(sendLoc_TAG, "0x1a\r\n"); //ctrl+z equivalent
     vTaskDelay(5000 / portTICK_PERIOD_MS);
+    
     smsDisable();
     free(hyperlink);
 }
@@ -175,20 +184,19 @@ static void sendLocation()
 /*  RX task for debugging
     shows A9G response to commands
 */
-static void rx_task(void *arg)
+void rx_task()
 {
     static const char *RX_TASK_TAG = "RX_TASK";
     esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1500 / portTICK_RATE_MS);
-        if (rxBytes > 0) {
-            data[rxBytes] = 0;
-            ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+    const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 2000 / portTICK_RATE_MS);
+    if (rxBytes > 0) {
+        data[rxBytes] = 0;
+        ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+        ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
         }
-    }
-    free(data);
+        
+        free(data);
 }
 
 void app_main(void)
@@ -197,8 +205,7 @@ void app_main(void)
     //INITIAL SETUP PROCEDURES
     init();
     //xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
-    internetSetup();
-    vTaskDelay(9000 / portTICK_PERIOD_MS);
+    //internetSetup();
     sendLocation();
 
 }
