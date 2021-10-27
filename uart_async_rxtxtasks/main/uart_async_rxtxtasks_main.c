@@ -42,41 +42,146 @@ int sendData(const char* logName, const char* data)
     return txBytes;
 }
 
-//tx task to get GPS data
-static void getGPS_task(void *arg)
+/*  sendData variance for sending hex data
+    only really need it of 0x1a
+ */
+/* int sendHex(const char* logName,const char* hex)
 {
-    static const char *TX_TASK_TAG = "TX_TASK";
-    esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
-    sendData(TX_TASK_TAG, "AT+GPS=1\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    sendData(TX_TASK_TAG, "AT+GPRSD=1\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    sendData(TX_TASK_TAG, "AT+GPRSD=0\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    sendData(TX_TASK_TAG, "AT+LOCATION=2\r\n");
+
+
+} */
+
+
+/*  A9G GPS connection
+    GPS task needs to be only triggered when it's needed
+    *TODO:  
+    
+*/
+static void gpsSetup()
+{
+    static const char *GPS_TAG = "GPS_TASK";
+    esp_log_level_set(GPS_TAG, ESP_LOG_INFO);
+    sendData(GPS_TAG, "AT+GPS=1\r\n");
 }
 
-//
-static void internetSetup_task(void *arg)
+static void gpsDisable()
 {
-    static const char *TX_TASK_TAG = "TX_TASK";
-    esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
-    sendData(TX_TASK_TAG, "AT+CGATT=1\r\n");
+    static const char *GPS_TAG = "GPS_TASK";
+    esp_log_level_set(GPS_TAG, ESP_LOG_INFO);
+    sendData(GPS_TAG, "AT+GPS=0\r\n");
+
+}
+
+/* A9G internet connection
+    APN:    hologram
+    User:   n/a
+    Pass:   n/a
+    *TODO:  need to make sure we return "OK"
+
+
+*/
+static void internetSetup()
+{
+    static const char *GPRSGSM_TAG = "GPRSGSM_TASK";
+    esp_log_level_set(GPRSGSM_TAG, ESP_LOG_INFO);
+    sendData(GPRSGSM_TAG, "AT+CGATT=1\r\n");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    sendData(GPRSGSM_TAG, "AT+CGDCONT=1,\"IP\",\"hologram\"\r\n");
     vTaskDelay(3000 / portTICK_PERIOD_MS);
-    sendData(TX_TASK_TAG, "AT+CGDCONT=1,\"IP\",\"soracom.io\"\r\n");
+    sendData(GPRSGSM_TAG, "AT+CGACT=1,1,\r\n");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+    return;
+}
+
+/*
+    SMS setup turns on format for receiving
+    and sending format 'CMGS="1phonenumber" >(text data) then send hex (0x1a)
+
+*/
+static void smsSetup()
+{
+    static const char *SMS_TAG = "sms_TASK";
+    esp_log_level_set(SMS_TAG, ESP_LOG_INFO);
+    sendData(SMS_TAG, "AT+CMGF=1\r\n");
+}
+
+/*
+    Disable SMS feauture when not needed
+*/
+static void smsDisable()
+{
+    static const char *SMSDISABLE_TAG = "Disable_SMS";
+    esp_log_level_set(SMSDISABLE_TAG, ESP_LOG_INFO);
+    sendData(SMSDISABLE_TAG, "AT+CMGF=0\r\n");
+}
+
+/*
+    Get location from GPS information
+    parsing location results from 'AT+LOCATION=2'
+    String[] latlong =  "-34.8799074,174.7565664".split(",");
+    double latitude = Double.parseDouble(latlong[0]);
+    double longitude = Double.parseDouble(latlong[1]);
+*/
+/* static float getLocation()
+{
+    // char latlong[] = "";
+    // char res = "\0";
+    // res = latlong.replace(",","");
+    // float result = float.parseFloat(res);
+    static const char *getLoc_TAG = "getLocation";
+
+    smsSetup();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    sendData(TX_TASK_TAG, "AT+CGACT=1,1,\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    esp_log_level_set(getLoc_TAG, ESP_LOG_INFO);
+    sendData(getLoc_TAG, "AT+GPRSD=1\r\n");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    sendData(getLoc_TAG, "AT+GPRSD=0\r\n");
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    sendData(getLoc_TAG, "AT+LOCATION=2\r\n");
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    gpsDisable();
+
+    return result;
+} */
+
+/*
+    Send location of user using a predefined google hyperlink
+    https://www.google.com/maps/search/?api=1&query=latitude,longitude
+
+*/
+static void sendLocation()
+{
+    smsSetup();
+    //getLocation();
+    char* googs = "https://www.google.com/maps/search/?api=1&query=  ";
+    char* result =  "13241.1,-1252.999 \r\n";
+    char * hyperlink = (char *) malloc(1 + strlen(googs)+ strlen(result) );
+    strcpy(hyperlink, googs);
+    strcpy(hyperlink, result);
+    char hex_byte_for_register = 0x1a;
+
+    static const char *sendLoc_TAG = "Location_SMS";
+    esp_log_level_set(sendLoc_TAG, ESP_LOG_INFO);
+    sendData(sendLoc_TAG, "AT+CMGS=\"14077564031\"\r\n");
+    sendData(sendLoc_TAG, hyperlink);
+    //sendData(sendLoc_TAG, "TEST\r\n");
+    sendData(sendLoc_TAG, sizeof(hex_byte_for_register)); //ctrl+z equivalent
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    smsDisable();
+    free(hyperlink);
 }
 
+/*  RX task for debugging
+    shows A9G response to commands
+*/
 static void rx_task(void *arg)
 {
     static const char *RX_TASK_TAG = "RX_TASK";
     esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
     while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 3200 / portTICK_RATE_MS);
+        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1500 / portTICK_RATE_MS);
         if (rxBytes > 0) {
             data[rxBytes] = 0;
             ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
@@ -88,8 +193,12 @@ static void rx_task(void *arg)
 
 void app_main(void)
 {
+
+    //INITIAL SETUP PROCEDURES
     init();
-    xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
-    xTaskCreate(internetSetup_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
-    xTaskCreate(getGPS_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
+    //xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
+    internetSetup();
+    vTaskDelay(9000 / portTICK_PERIOD_MS);
+    sendLocation();
+
 }
