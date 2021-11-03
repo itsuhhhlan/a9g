@@ -45,11 +45,14 @@ int sendData(const char* logName, const char* data)
 /*  sendData variance for sending hex data
     only really need it of 0x1a
  */
-/* int sendHex(const char* logName,const char* hex)
+int sendHex(const char* logName, const char* data)
 {
-
-
-} */
+    int len = sizeof(data);
+    printf("%d # of bytes; %s was written\n", len, data);
+    const int txBytes = uart_write_bytes(UART_NUM_1, data, len);
+    ESP_LOGI(logName, "Wrote %d bytes", txBytes);
+    return txBytes;
+}
 
 
 /*  A9G GPS connection
@@ -77,7 +80,6 @@ static void gpsDisable()
     User:   n/a
     Pass:   n/a
     *TODO:  need to make sure we return "OK"
-
 
 */
 static void internetSetup()
@@ -128,12 +130,13 @@ static void smsDisable()
     double latitude = Double.parseDouble(latlong[0]);
     double longitude = Double.parseDouble(latlong[1]);
 */
-/* static float getLocation()
+
+static float getLocation()
 {
-    // char latlong[] = "";
-    // char res = "\0";
-    // res = latlong.replace(",","");
-    // float result = float.parseFloat(res);
+    char latlong[] = "";
+    char res = "\0";
+    res = latlong.replace(",","");
+    float result = float.parseFloat(res);
     static const char *getLoc_TAG = "getLocation";
 
     smsSetup();
@@ -148,7 +151,7 @@ static void smsDisable()
     gpsDisable();
 
     return result;
-} */
+}
 
 /*
     Send location of user using a predefined google hyperlink
@@ -160,12 +163,12 @@ static void sendLocation()
     smsSetup();
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     //getLocation();
-    char* googs = "https://www.google.com/maps/search/?api=1&query=  ";
-    char* result =  "13241.1,-1252.999 \r\n";
+    char* googs = "https://www.google.com/maps/search/?api=1&query=";
+    char* result =  "13241.1,-1252.999\r\n";
     char * hyperlink = (char *) malloc(1 + strlen(googs)+ strlen(result) );
     strcpy(hyperlink, googs);
-    strcpy(hyperlink, result);
-    char hex_byte_for_register = 0x1a;
+    strcat(hyperlink,result);
+    char hex_byte_for_register = {0x1a};
 
     static const char *sendLoc_TAG = "Location_SMS";
     esp_log_level_set(sendLoc_TAG, ESP_LOG_INFO);
@@ -173,8 +176,8 @@ static void sendLocation()
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     
     sendData(sendLoc_TAG, hyperlink);
-    //sendData(sendLoc_TAG, "TEST\r\n");
-    sendData(sendLoc_TAG, "0x1a\r\n"); //ctrl+z equivalent
+    sendHex(sendLoc_TAG, hex_byte_for_register);
+    sendData(sendLoc_TAG, "\r\n"); //ctrl+z equivalent
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     
     smsDisable();
@@ -205,7 +208,7 @@ void app_main(void)
     //INITIAL SETUP PROCEDURES
     init();
     //xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
-    //internetSetup();
+    internetSetup();
     sendLocation();
 
 }
