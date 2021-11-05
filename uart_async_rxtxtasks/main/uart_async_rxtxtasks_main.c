@@ -15,6 +15,7 @@
 #include "driver/gpio.h"
 
 static const int RX_BUF_SIZE = 1024;
+uint8_t* locData = 0;
 
 #define TXD_PIN (GPIO_NUM_25)
 #define RXD_PIN (GPIO_NUM_26)
@@ -42,7 +43,8 @@ int sendData(const char* logName, const char* data)
     return txBytes;
 }
 
-/*  sendData variance for sending hex data
+/*  
+    sendData variance for sending hex data
     only really need it of 0x1a
  */
 int sendHex(const char* logName, const char* data)
@@ -55,7 +57,8 @@ int sendHex(const char* logName, const char* data)
 }
 
 
-/*  A9G GPS connection
+/*  
+    A9G GPS connection
     GPS task needs to be only triggered when it's needed
     *TODO:  
     
@@ -75,7 +78,8 @@ static void gpsDisable()
 
 }
 
-/* A9G internet connection
+/* 
+    A9G internet connection
     APN:    hologram
     User:   n/a
     Pass:   n/a
@@ -131,16 +135,11 @@ static void smsDisable()
     double longitude = Double.parseDouble(latlong[1]);
 */
 
-static float getLocation()
+static void getLocation()
 {
-    char latlong[] = "";
-    char res = "\0";
-    res = latlong.replace(",","");
-    float result = float.parseFloat(res);
-    static const char *getLoc_TAG = "getLocation";
-
-    smsSetup();
+    gpsSetup();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    static const char *getLoc_TAG = "getLocation";
     esp_log_level_set(getLoc_TAG, ESP_LOG_INFO);
     sendData(getLoc_TAG, "AT+GPRSD=1\r\n");
     vTaskDelay(2000 / portTICK_PERIOD_MS);
@@ -148,9 +147,10 @@ static float getLocation()
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     sendData(getLoc_TAG, "AT+LOCATION=2\r\n");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    rx2_task();
     gpsDisable();
 
-    return result;
+
 }
 
 /*
@@ -162,12 +162,13 @@ static void sendLocation()
 {
     smsSetup();
     vTaskDelay(2000 / portTICK_PERIOD_MS);
-    //getLocation();
+    getLocation();
+    vTaskDelay(7000 / portTICK_PERIOD_MS);
     char* googs = "https://www.google.com/maps/search/?api=1&query=";
-    char* result =  "13241.1,-1252.999\r\n";
+    char* result =  (char) locData[1];
     char * hyperlink = (char *) malloc(1 + strlen(googs)+ strlen(result) );
     strcpy(hyperlink, googs);
-    strcat(hyperlink,result);
+    strcat(hyperlink, result);
     char hex_byte_for_register = {0x1a};
 
     static const char *sendLoc_TAG = "Location_SMS";
@@ -184,7 +185,8 @@ static void sendLocation()
     free(hyperlink);
 }
 
-/*  RX task for debugging
+/*  
+    RX task for debugging
     shows A9G response to commands
 */
 void rx_task()
@@ -200,6 +202,31 @@ void rx_task()
         }
         
         free(data);
+}
+
+
+/*  
+    RX task for getting loc data in latitude and longitude
+*/
+void rx2_task()
+{
+    static const char *RX_TASK_TAG = "RX_TASK";
+    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+    while (1) {
+        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
+        locData = data;
+        memmove(locData, locData+1, sizeof(locData+1) + 1);
+        if (rxBytes > 0) {
+            data[rxBytes] = 0;
+            ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+            //printf("%s\n", locData);
+            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+        }
+    }
+    free(data);
+
+    return;
 }
 
 void app_main(void)
