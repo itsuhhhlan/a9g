@@ -45,17 +45,16 @@ int sendData(const char* logName, const char* data)
 
 /*  
     sendData variance for sending hex data
-    only really need it of 0x1a
+    only really need it for 0x1a
  */
 int sendHex(const char* logName, const char* data)
 {
     int len = sizeof(data);
-    printf("%d # of bytes; %s was written\n", len, data);
+    //printf("%d # of bytes; %s was written\n", len, data);
     const int txBytes = uart_write_bytes(UART_NUM_1, data, len);
-    ESP_LOGI(logName, "Wrote %d bytes", txBytes);
+    ESP_LOGI(logName, "Wrote in hex %d bytes", txBytes);
     return txBytes;
 }
-
 
 /*  
     A9G GPS connection
@@ -94,10 +93,10 @@ static void internetSetup()
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     
     sendData(GPRSGSM_TAG, "AT+CGDCONT=1,\"IP\",\"hologram\"\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
     
     sendData(GPRSGSM_TAG, "AT+CGACT=1,1\r\n");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     
 
     return;
@@ -128,6 +127,20 @@ static void smsDisable()
 }
 
 /*
+    Delete text message storage so it never gets full
+*/
+
+static void delMssg()
+{
+    static const char *deleteMessage_TAG = "Message_Deleted";
+    esp_log_level_set(deleteMessage_TAG, ESP_LOG_INFO);
+    sendData(deleteMessage_TAG, "AT+CPMS=ME\r\n");
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    sendData(deleteMessage_TAG, "AT+CMGD=1,4\r\n");
+
+}
+
+/*
     Get location from GPS information
     parsing location results from 'AT+LOCATION=2'
     String[] latlong =  "-34.8799074,174.7565664".split(",");
@@ -141,15 +154,15 @@ static void getLocation()
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     static const char *getLoc_TAG = "getLocation";
     esp_log_level_set(getLoc_TAG, ESP_LOG_INFO);
-    sendData(getLoc_TAG, "AT+GPRSD=1\r\n");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    sendData(getLoc_TAG, "AT+GPRSD=0\r\n");
+    sendData(getLoc_TAG, "AT+GPSRD=1\r\n");
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    sendData(getLoc_TAG, "AT+GPSRD=0\r\n");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    rx2task();
     sendData(getLoc_TAG, "AT+LOCATION=2\r\n");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    rx2_task();
+    rx2task();
     gpsDisable();
-
 
 }
 
@@ -161,73 +174,71 @@ static void getLocation()
 static void sendLocation()
 {
     smsSetup();
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     getLocation();
-    vTaskDelay(7000 / portTICK_PERIOD_MS);
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
     char* googs = "https://www.google.com/maps/search/?api=1&query=";
-    char* result =  (char) locData[1];
-    char * hyperlink = (char *) malloc(1 + strlen(googs)+ strlen(result) );
+    //char* result = "-121.411,242.135\r\n";
+    char* result = (char*) locData;
+    char* hyperlink = (char*) malloc(1 + strlen(googs) + strlen(result));
     strcpy(hyperlink, googs);
     strcat(hyperlink, result);
-    char hex_byte_for_register = {0x1a};
+    char hex_byte[] = {0x1a};
 
     static const char *sendLoc_TAG = "Location_SMS";
     esp_log_level_set(sendLoc_TAG, ESP_LOG_INFO);
-    sendData(sendLoc_TAG, "AT+CMGS=\"14077564031\"\r\n");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    
-    sendData(sendLoc_TAG, hyperlink);
-    sendHex(sendLoc_TAG, hex_byte_for_register);
-    sendData(sendLoc_TAG, "\r\n"); //ctrl+z equivalent
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-    
+    printf("%s\n", hyperlink);
+    // sendData(sendLoc_TAG, "AT+CMGS=\"14077564031\"\r\n");
+    // vTaskDelay(2000 / portTICK_PERIOD_MS);
+    // sendData(sendLoc_TAG, hyperlink); //sends the google map link
+    // vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // sendHex(sendLoc_TAG, hex_byte); //sends the hex code '0x1a'
+    // sendData(sendLoc_TAG, "\r\n"); //ENTER
+    // vTaskDelay(6000 / portTICK_PERIOD_MS);
+    // delMssg();
     smsDisable();
     free(hyperlink);
+}
+
+static void rx2task()
+{
+    static const char *RX_TASK_TAG = "RX_TASK";
+    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+    locData = data;
+    //char* result = (char*) locData;
+    //printf("%s\n", result);
+    // while (1) {
+    //     const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
+    //     if (rxBytes > 0) {
+    //         data[rxBytes] = 0;
+    //         ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+    //         printf("%s\n", result);
+    //         ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+    //     }
+    // }
+    free(data);
+    
 }
 
 /*  
     RX task for debugging
     shows A9G response to commands
 */
-void rx_task()
-{
-    static const char *RX_TASK_TAG = "RX_TASK";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
-    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 2000 / portTICK_RATE_MS);
-    if (rxBytes > 0) {
-        data[rxBytes] = 0;
-        ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-        ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-        }
+// void rx_task()
+// {
+//     static const char *RX_TASK_TAG = "RX_TASK";
+//     esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+//     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+//     const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 2000 / portTICK_RATE_MS);
+//     if (rxBytes > 0) {
+//         data[rxBytes] = 0;
+//         ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+//         ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+//         }
         
-        free(data);
-}
-
-
-/*  
-    RX task for getting loc data in latitude and longitude
-*/
-void rx2_task()
-{
-    static const char *RX_TASK_TAG = "RX_TASK";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
-    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
-        locData = data;
-        memmove(locData, locData+1, sizeof(locData+1) + 1);
-        if (rxBytes > 0) {
-            data[rxBytes] = 0;
-            ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-            //printf("%s\n", locData);
-            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-        }
-    }
-    free(data);
-
-    return;
-}
+//         free(data);
+// }
 
 void app_main(void)
 {
@@ -235,7 +246,7 @@ void app_main(void)
     //INITIAL SETUP PROCEDURES
     init();
     //xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
-    internetSetup();
+    //internetSetup();
     sendLocation();
 
 }
