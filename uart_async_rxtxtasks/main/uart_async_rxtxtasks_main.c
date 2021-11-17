@@ -57,6 +57,59 @@ int sendHex(const char* logName, const char* data)
 }
 
 /*  
+    RX task for debugging
+    shows A9G response to commands
+*/
+static void rx_task()
+{
+    static const char *RX_TASK_TAG = "RX_TASK";
+    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+    //uint8_t* locData = 0;
+    locData = data;
+    char* result = (char*) locData;
+    //memmove(locData, locData+1, sizeof(locData+1) + 1);
+
+    printf("%s\n", result);
+
+    while (1) {
+        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
+        //locData = data;
+        //char* result = (char*) locData;
+        //memmove(locData, locData+1, sizeof(locData+1) + 1);
+        if (rxBytes > 0) {
+            data[rxBytes] = 0;
+            ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+            printf("%s\n", result);
+            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+        }
+    }
+    free(data);
+    
+}
+
+static void rx2task()
+{
+    static const char *RX_TASK_TAG = "RX_TASK";
+    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+    locData = data;
+    char* result = (char*) data;
+    //printf("%s\n", result);
+//     while (1) {
+//         const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
+//         if (rxBytes > 0) {
+//             data[rxBytes] = 0;
+//             ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+//             printf("%s\n", data);
+//             ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+//         }
+//    }
+    free(data);
+    
+}
+
+/*  
     A9G GPS connection
     GPS task needs to be only triggered when it's needed
     *TODO:  
@@ -154,11 +207,11 @@ static void getLocation()
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     static const char *getLoc_TAG = "getLocation";
     esp_log_level_set(getLoc_TAG, ESP_LOG_INFO);
+
     sendData(getLoc_TAG, "AT+GPSRD=1\r\n");
     vTaskDelay(3000 / portTICK_PERIOD_MS);
     sendData(getLoc_TAG, "AT+GPSRD=0\r\n");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    rx2task();
     sendData(getLoc_TAG, "AT+LOCATION=2\r\n");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     rx2task();
@@ -173,7 +226,7 @@ static void getLocation()
 */
 static void sendLocation()
 {
-    smsSetup();
+    //smsSetup();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     getLocation();
     vTaskDelay(10000 / portTICK_PERIOD_MS);
@@ -196,49 +249,9 @@ static void sendLocation()
     // sendData(sendLoc_TAG, "\r\n"); //ENTER
     // vTaskDelay(6000 / portTICK_PERIOD_MS);
     // delMssg();
-    smsDisable();
+    //smsDisable();
     free(hyperlink);
 }
-
-static void rx2task()
-{
-    static const char *RX_TASK_TAG = "RX_TASK";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
-    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    locData = data;
-    //char* result = (char*) locData;
-    //printf("%s\n", result);
-    // while (1) {
-    //     const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
-    //     if (rxBytes > 0) {
-    //         data[rxBytes] = 0;
-    //         ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-    //         printf("%s\n", result);
-    //         ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-    //     }
-    // }
-    free(data);
-    
-}
-
-/*  
-    RX task for debugging
-    shows A9G response to commands
-*/
-// void rx_task()
-// {
-//     static const char *RX_TASK_TAG = "RX_TASK";
-//     esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
-//     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-//     const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 2000 / portTICK_RATE_MS);
-//     if (rxBytes > 0) {
-//         data[rxBytes] = 0;
-//         ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-//         ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-//         }
-        
-//         free(data);
-// }
 
 void app_main(void)
 {
